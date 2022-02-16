@@ -13,7 +13,7 @@ type Quote ={
     age:number
 }
 
-const quotes : Quote[]=[
+let quotes : Quote[]=[
     {
         id: Math.random(),
         theQuote: "Memento Mori",
@@ -158,6 +158,43 @@ app.post("/quotes", (req, res) => {
     }
 }
 );
+
+app.patch("/quotes/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const changeQuote = quotes.find((quote) => quote.id === id);
+
+    if (changeQuote) {
+        if (typeof req.body.content === "string")
+            changeQuote.theQuote = req.body.theQuote;
+        if (typeof req.body.firstName === "string")
+            changeQuote.firstName = req.body.firstName;
+        if (typeof req.body.lastName === "string")
+            changeQuote.lastName = req.body.lastName;
+        if (typeof req.body.age === "number") changeQuote.age = req.body.age;
+        if (typeof req.body.image === "string")
+            changeQuote.image = req.body.image;
+        res.send(changeQuote);
+    } else {
+        res.status(404).send({ error: "Quote not found." });
+    }
+});
+
+
+
+app.delete("/quotes/:id", (req, res) => {
+    const id = Number(req.params.id);
+
+    const match = quotes.find((quote) => quote.id === id);
+
+    if (match) {
+        quotes = quotes.filter((quote) => quote.id !== id);
+        res.send("Quote deleted sucessfully");
+    } else {
+        res.status(404).send({ error: "Quote not found" });
+    }
+});
+
+
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
