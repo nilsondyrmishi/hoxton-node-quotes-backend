@@ -1,8 +1,42 @@
 import express = require("express");
+// @ts-ignore
+import Database from 'better-sqlite3';
 
 const app =express()
 const PORT=8080
 const cors = require("cors");
+
+
+
+app.use(express.json());
+app.use(
+    cors({
+        origin: "*"
+    })
+);
+const db = new Database('./data.db', {
+    verbose: console.log
+});
+
+const getAllQuotes = db.prepare(`
+SELECT * FROM quotes;
+`);
+
+const getQuoteById = db.prepare(`
+SELECT * FROM quotes WHERE id=?;
+`);
+
+const createQuote = db.prepare(`
+INSERT INTO quotes (theQuote, firstName, lastName, age, image ) VALUES (?, ?, ? ,? ,? );
+`);
+
+const updateQuote = db.prepare(`UPDATE quotes SET
+  theQuote=?, firstName=?, lastName=?, age=?, image=? WHERE id=?;
+`);
+
+const deleteQuote = db.prepare(`
+DELETE FROM quotes WHERE id=?;
+`);
 
 type Quote ={
     id:number
@@ -92,30 +126,54 @@ let quotes : Quote[]=[
     },
 
 ]
+const dropQuotesTable = db.prepare('DROP TABLE IF EXISTS quotes;');
+dropQuotesTable.run();
 
-app.use(express.json());
-app.use(
-    cors({
-        origin: "*"
-    })
+const createQuotesTable = db.prepare(`
+CREATE TABLE IF NOT EXISTS quotes (
+  id INTEGER,
+  theQuote TEXT NOT NULL,
+  firstName TEXT NOT NULL,
+  lastName TEXT NOT NULL,
+  age INTEGER NOT NULL,
+  image TEXT NOT NULL,
+  PRIMARY KEY (id)
 );
+`);
+createQuotesTable.run();
+
+
+
+for (const quote of quotes) {
+    createQuote.run(
+        quote.theQuote,
+        quote.firstName,
+        quote.lastName,
+        quote.age,
+        quote.image
+    );
+}
+
 
 app.get('/',function (req,res){
     res.send('We are learning NODE JSSS')
 })
 
 app.get("/random", function (req, res) {
-    const randomQuote = Math.floor(Math.random() * quotes.length);
-    res.send(quotes[randomQuote]);
+   const allQuote = getAllQuotes.all()
+    const randomQuote = Math.floor(Math.random() * allQuote.length);
+    res.send(allQuote[randomQuote]);
 });
 
 app.get('/quotes',function (req,res){
-    res.send(quotes)
+    const allQuote = getAllQuotes.all()
+
+    res.send(allQuote)
 })
 
 app.get("/quotes/:id", (req, res) => {
-    const id = Number(req.params.id);
-    const match = quotes.find((quote) => quote.id === id);
+    const id = req.params.id;
+    const match = getQuoteById.get(id);
     if (match) {
         res.send(match);
     } else {
@@ -142,16 +200,9 @@ app.post("/quotes", (req, res) => {
     }
 
     if (errors.length === 0) {
-        const newQuote: Quote = {
-            id: Math.random(),
-            theQuote: theQuote,
-            firstName: firstName,
-            lastName: lastName,
-            age: age,
-            image: image
-        };
-        quotes.unshift(newQuote);
-        res.status(201).send(newQuote);
+        const result = createQuote.run(theQuote, firstName, lastName, age, image);
+        const quote = getQuoteById.get(result.lastInsertRowid);
+        res.status(201).send(quote);
     } else {
         res.status(400).send({ errors: errors }
         );
@@ -159,24 +210,19 @@ app.post("/quotes", (req, res) => {
 }
 );
 
-app.patch("/quotes/:id", (req, res) => {
-    const id = Number(req.params.id);
-    const changeQuote = quotes.find((quote) => quote.id === id);
-
-    if (changeQuote) {
-        if (typeof req.body.content === "string")
-            changeQuote.theQuote = req.body.theQuote;
-        if (typeof req.body.firstName === "string")
-            changeQuote.firstName = req.body.firstName;
-        if (typeof req.body.lastName === "string")
-            changeQuote.lastName = req.body.lastName;
-        if (typeof req.body.age === "number") changeQuote.age = req.body.age;
-        if (typeof req.body.image === "string")
-            changeQuote.image = req.body.image;
-        res.send(changeQuote);
-    } else {
-        res.status(404).send({ error: "Quote not found." });
-    }
+app.patch('/quotes/:id', (req, res) => {
+    const { theQuote, firstName, lastName, age, image } = req.body;
+    const exiQuote = getQuoteById.get(req.params.id);
+    updateQuote.run(
+        theQuote ?? exiQuote.name,
+        firstName ?? exiQuote.firstName,
+        lastName ?? exiQuote.lastName,
+        age ?? exiQuote.age,
+        image ?? exiQuote.image,
+        req.params.id
+    );
+    const updatedQuote = getQuoteById.get(req.params.id);
+    res.send(updatedQuote);
 });
 
 
@@ -184,10 +230,9 @@ app.patch("/quotes/:id", (req, res) => {
 app.delete("/quotes/:id", (req, res) => {
     const id = Number(req.params.id);
 
-    const match = quotes.find((quote) => quote.id === id);
+    const result = deleteQuote.run(id);
 
-    if (match) {
-        quotes = quotes.filter((quote) => quote.id !== id);
+    if (result.changes !==0) {
         res.send("Quote deleted sucessfully");
     } else {
         res.status(404).send({ error: "Quote not found" });
